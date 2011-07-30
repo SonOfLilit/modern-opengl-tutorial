@@ -1,4 +1,4 @@
 module Main (main) where
-import qualified Empty
+import qualified Tutorial
 
-main = Empty.main
+main = Tutorial.main

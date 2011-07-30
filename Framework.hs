@@ -3,7 +3,7 @@ import Graphics.UI.GLUT
 
 
 framework defaults init display idle reshape keyboard = do
-  (progname, _) <- getArgsAndInitialize
+  (progname, args) <- getArgsAndInitialize
   initialDisplayMode $= [DoubleBuffered, RGBMode]
   initialWindowSize $= Size 400 300
   initialWindowPosition $= Position 300 200
@@ -12,7 +12,7 @@ framework defaults init display idle reshape keyboard = do
   
   createWindow progname
   
-  init
+  init args
   
   displayCallback $= display
   idleCallback $= Just idle

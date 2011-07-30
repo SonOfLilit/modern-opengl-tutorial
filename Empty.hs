@@ -7,7 +7,7 @@ import Framework
 defaults = do
   return ()
 
-init = do
+init args = do
   return ()
 
 display = do

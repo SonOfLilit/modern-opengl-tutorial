@@ -181,6 +181,24 @@ crossVec3 :: [GLfloat] -> [GLfloat] -> [GLfloat]
 crossVec3 [u0,u1,u2] [v0,v1,v2] = [u1*v2-u2*v1, u2*v0-u0*v2, u0*v1-u1*v0]
 crossVec3 _ _ = [0,0,1]
 
+-- | Substract two 3-vectors
+subV3 :: (Num a) => Vertex3 a -> Vertex3 a -> Vertex3 a
+subV3 (Vertex3 u0 u1 u2) (Vertex3 v0 v1 v2) = Vertex3 (u0-v0) (u1-v1) (u2-v2)
+-- | Cross product of two 3-vectors.
+crossV3 :: (Num a) => Vertex3 a -> Vertex3 a -> Vertex3 a
+crossV3 (Vertex3 u0 u1 u2) (Vertex3 v0 v1 v2) = 
+  Vertex3 (u1*v2-u2*v1) (u2*v0-u0*v2) (u0*v1-u1*v0)
+-- | Normalizes a vector to a unit vector.
+normalizeV3 :: (Floating a, Fractional a) => Vertex3 a -> Normal3 a
+normalizeV3 v = let Vertex3 a b c = scaleV3 (recip $ lengthV3 v) v
+                in Normal3 a b c
+-- | Scales a vector by a scalar
+scaleV3 :: (Num a) => a -> Vertex3 a -> Vertex3 a
+scaleV3 s (Vertex3 a b c) = Vertex3 (s*a) (s*b) (s*c)
+-- | Computes the length of a vector.
+lengthV3 :: (Floating a) => Vertex3 a -> a
+lengthV3 (Vertex3 a b c) = sqrt (a*a + b*b + c*c)
+
 -- | Converts a 4-vector into a 3-vector by dropping the fourth element.
 vec4To3 :: Vec4 -> Vec3
 vec4To3 = take 3

@@ -10,6 +10,7 @@
 module Main where
 import Prelude hiding (init)
 import System.Exit
+import Data.Monoid
 import Control.Applicative
 import Data.IORef
 import Foreign.Ptr
@@ -96,13 +97,13 @@ data Resources = Resources { flagMesh :: Mesh
                            , shaders :: Shaders
                            , timer :: GLfloat
                            , eyeOffset :: (GLfloat, GLfloat)
-                           , windowSize :: Size
+                           , rWindowSize :: Size
                            , projectionMatrix :: Matrix4x4
                            , modelViewMatrix :: Matrix4x4
                            }
 
 defaults = do
-  return ()
+  initialWindowSize $= Size 640 480
 
 init resources args = do
   let (vertexShaderPath, fragmentShaderPath) = case args of
@@ -111,15 +112,49 @@ init resources args = do
         [] -> ("flag.v.glsl", "flag.f.glsl")
   r <- makeResources vertexShaderPath fragmentShaderPath
   resources $= r
+  
+  motionCallback $= Just (drag resources . Just)
+
+data MeshPart = MeshPart [MeshVertex] [GLuint]
+instance Monoid MeshPart where
+  mempty = MeshPart [] []
+  MeshPart av ae `mappend` MeshPart bv be = 
+    MeshPart (av ++ bv) (ae ++ be')
+      where be' = map (+avlen) be
+            avlen = fromIntegral . toInteger . length $ av
 
 flagMeshData = MeshData vertexData elementData "flag.tga"
-backgroundMeshData = MeshData vertexData elementData "background.tga"
+backgroundMeshData =
+  let rectangleVertices (x, y, z) (x', y', z') (a, b) (a', b') =
+        let x0 = Vertex3 x y z
+            x1 = Vertex3 x' y z
+            x2 = Vertex3 x' y z'
+            x3 = Vertex3 x y z'
+            normalV = normalizeV3 $ (x2 `subV3` x0) `crossV3` (x1 `subV3` x0)
+            t0 = TexCoord2 a b
+            t1 = TexCoord2 a' b
+            t2 = TexCoord2 a' b'
+            t3 = TexCoord2 a b'
+        in [ MeshVertex x0 normalV t0 0.0 (Vector4 0 0 0 0)
+           , MeshVertex x1 normalV t1 0.0 (Vector4 0 0 0 0) 
+           , MeshVertex x2 normalV t2 0.0 (Vector4 0 0 0 0) 
+           , MeshVertex x3 normalV t3 0.0 (Vector4 0 0 0 0) 
+           ]
+      rectangleElements = [ 0, 1, 2
+                          , 3, 1, 2]
+      groundY = -1.0
+      groundMesh = MeshPart (
+        rectangleVertices (-0.875, groundY, -2.45) (1.875, groundY, 0.20)
+                          (0.03125, 0.0078125) (0.515625, 0.9921875))
+        rectangleElements
+      MeshPart vertexData elementData = mconcat [groundMesh]
+  in MeshData vertexData elementData "background.tga"
 
 vertexData :: [MeshVertex]
 vertexData = [
-    MeshVertex (Vertex3 0 0 0) (Normal3 0 0 1) (TexCoord2 0 0) 0.0 (Vector4 0 0 0 255)
-  , MeshVertex (Vertex3 0 1 0) (Normal3 0 0 1) (TexCoord2 0 1) 0.0 (Vector4 0 0 0 255)
-  , MeshVertex (Vertex3 1 0 0) (Normal3 0 0 1) (TexCoord2 1 1) 0.0 (Vector4 0 0 0 255)
+    MeshVertex (Vertex3 0 0 0) (Normal3 0 0 1) (TexCoord2 0 0) 1.0 (Vector4 1 0 0 255)
+  , MeshVertex (Vertex3 0 1 0) (Normal3 0 0 1) (TexCoord2 0 1) 1.0 (Vector4 0 1 0 255)
+  , MeshVertex (Vertex3 1 0 0) (Normal3 0 0 1) (TexCoord2 1 1) 1.0 (Vector4 0 0 1 255)
   ]
 elementData :: [GLuint]
 elementData = [0, 1, 2]
@@ -163,7 +198,8 @@ calculateModelViewMatrix (offsetX, offsetY) =
       (baseX, baseY, baseZ) = baseEyePosition
   in [ [ 1.0, 0.0, 0.0, 0.0]
      , [ 0.0, 1.0, 0.0, 0.0]
-     , [ 0.0, 0.0, 1.0, 0.0],[(-baseX) - offsetX, (-baseY) - offsetY, -baseZ, 1.0]
+     , [ 0.0, 0.0, 1.0, 0.0]
+     , [(-baseX) - offsetX, (-baseY) - offsetY, -baseZ, 1.0]
      ]
 
 makeTexture filename = do
@@ -208,8 +244,10 @@ display resources = do
       u = uniforms s
       a = attribs s
   
-  clearColor $= Color4 0 1 0 1
+  clearColor $= Color4 0 0 0 1
   clear [ColorBuffer, DepthBuffer]
+
+  polygonMode $= (Fill, Line)
   
   currentProgram $= Just (program s)
   uniform (timerU u) $= Index1 (timer r)
@@ -226,8 +264,8 @@ display resources = do
   vertexAttribArray (shininessA a) $= Enabled
   vertexAttribArray (specularA a)  $= Enabled
   
-  renderMesh r (flagMesh r)
   renderMesh r (backgroundMesh r)
+--  renderMesh r (flagMesh r)
   
   vertexAttribArray (positionA a)  $= Disabled
   vertexAttribArray (normalA a)    $= Disabled
@@ -276,14 +314,32 @@ idle resources = do
   resources $= r {timer=fromIntegral t * 0.001}
   postRedisplay Nothing
 
-reshape size = do
-  return ()
+reshape resources size = do
+  r <- get resources
+  resources $= r { rWindowSize=size
+                 , projectionMatrix=calculateProjectionMatrix size
+                 }
+  viewport $= (Position 0 0, size)
 
-keyboard (Char '\27') Down _ _ = exitWith ExitSuccess
-keyboard _key         _state _modifiers _position = return ()
+keyboardMouse _resources (Char '\27')             Down _ _ = exitWith ExitSuccess
+keyboardMouse resources  (MouseButton LeftButton) Up _ _ = drag resources Nothing
+keyboardMouse _resources _key                     _state _modifiers _position = return ()
+
+drag resources mposition = do
+  r <- get resources
+  let Size w h = rWindowSize r
+      newEyeOffset = case mposition of
+        Just (Position x y) -> (fromIntegral x / fromIntegral w - 0.5, 
+                                fromIntegral y / fromIntegral h + 0.5)
+        Nothing -> (0, 0)
+        
+  resources $= r { eyeOffset=newEyeOffset 
+                 , modelViewMatrix=calculateModelViewMatrix newEyeOffset
+                 }
+  postRedisplay Nothing
 
 main :: IO ()
 main = do
   -- TODO: Write mesh to file
   resources <- newIORef $ undefined
-  framework defaults (init resources) (display resources) (idle resources) reshape keyboard
+  framework defaults (init resources) (display resources) (idle resources) (reshape resources) (keyboardMouse resources)

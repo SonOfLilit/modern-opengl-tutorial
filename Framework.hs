@@ -2,7 +2,7 @@ module Framework where
 import Graphics.UI.GLUT
 
 
-framework defaults init display idle reshape keyboard = do
+framework defaults init display idle reshape keyboardMouse = do
   (progname, args) <- getArgsAndInitialize
   initialDisplayMode $= [DoubleBuffered, WithDepthBuffer, RGBMode]
   initialWindowSize $= Size 400 300
@@ -17,6 +17,6 @@ framework defaults init display idle reshape keyboard = do
   displayCallback $= display
   idleCallback $= Just idle
   reshapeCallback $= Just reshape
-  keyboardMouseCallback $= Just keyboard
+  keyboardMouseCallback $= Just keyboardMouse
   
   mainLoop
